@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MoodScape — Feel Your World</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --transition: 1.8s cubic-bezier(0.4, 0, 0.2, 1);
+    --fast: 0.4s ease;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  /* ── SCENE LAYER ── */
+  #scene {
+    position: fixed; inset: 0;
+    background: #0a0a14;
+    transition: background var(--transition);
+    z-index: 0;
+  }
+
+  /* Animated background particles / elements */
+  #canvas-bg {
+    position: fixed; inset: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* Overlay gradient for depth */
+  #overlay {
+    position: fixed; inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--transition);
+  }
+
+  /* ── MAIN UI ── */
+  #ui {
+    position: fixed; inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+
+  /* mood label */
+  #mood-label {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(3rem, 10vw, 7rem);
+    font-weight: 700;
+    color: rgba(255,255,255,0.15);
+    letter-spacing: -0.02em;
+    text-align: center;
+    pointer-events: none;
+    transition: color 1.2s ease, opacity 0.8s ease;
+    line-height: 1;
+    margin-bottom: 2rem;
+    user-select: none;
+  }
+  #mood-label.active {
+    color: rgba(255,255,255,0.9);
+  }
+
+  /* tagline */
+  #tagline {
+    font-family: 'DM Sans', sans-serif;
+    font-size: clamp(0.8rem, 2vw, 1rem);
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+    margin-bottom: 3rem;
+    text-align: center;
+    pointer-events: none;
+    transition: color 1s ease;
+  }
+
+  /* ── INPUT ZONE ── */
+  .input-zone {
+    width: 100%;
+    max-width: 520px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .input-wrapper {
+    width: 100%;
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  #mood-input {
+    width: 100%;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 100px;
+    padding: 1rem 5rem 1rem 1.8rem;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 1rem;
+    font-weight: 300;
+    color: #fff;
+    outline: none;
+    transition: background 0.3s, border-color 0.3s;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  #mood-input::placeholder { color: rgba(255,255,255,0.3); }
+  #mood-input:focus {
+    background: rgba(255,255,255,0.12);
+    border-color: rgba(255,255,255,0.45);
+  }
+
+  #submit-btn {
+    position: absolute;
+    right: 6px;
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.9);
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s, background 0.3s;
+    flex-shrink: 0;
+  }
+  #submit-btn:hover { transform: scale(1.08); background: #fff; }
+  #submit-btn:active { transform: scale(0.95); }
+  #submit-btn svg { width: 18px; height: 18px; }
+
+  /* mood chips */
+  .chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .chip {
+    padding: 6px 16px;
+    border-radius: 100px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.6);
+    font-size: 0.78rem;
+    font-family: 'DM Sans', sans-serif;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    transition: all 0.25s;
+  }
+  .chip:hover {
+    background: rgba(255,255,255,0.18);
+    color: #fff;
+    border-color: rgba(255,255,255,0.4);
+    transform: translateY(-1px);
+  }
+
+  /* ── SCENE PARTICLES ── */
+  .particle {
+    position: fixed;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  /* ── RAIN ── */
+  .rain-drop {
+    position: fixed;
+    width: 1px;
+    background: rgba(150,200,255,0.5);
+    pointer-events: none;
+    z-index: 3;
+    animation: fall linear infinite;
+  }
+  @keyframes fall {
+    from { transform: translateY(-20px); }
+    to   { transform: translateY(110vh); }
+  }
+
+  /* ── STARS ── */
+  .star {
+    position: fixed;
+    border-radius: 50%;
+    background: white;
+    pointer-events: none;
+    z-index: 3;
+    animation: twinkle ease-in-out infinite;
+  }
+  @keyframes twinkle {
+    0%,100% { opacity: 0.2; transform: scale(1); }
+    50%      { opacity: 1;   transform: scale(1.4); }
+  }
+
+  /* ── FIRE EMBERS ── */
+  .ember {
+    position: fixed;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 3;
+    animation: rise linear infinite;
+  }
+  @keyframes rise {
+    0%   { transform: translateY(0) translateX(0) scale(1); opacity: 1; }
+    100% { transform: translateY(-120vh) translateX(var(--drift)) scale(0); opacity: 0; }
+  }
+
+  /* ── CLOUDS ── */
+  .cloud {
+    position: fixed;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 3;
+    animation: drift linear infinite;
+  }
+  @keyframes drift {
+    from { transform: translateX(-200px); }
+    to   { transform: translateX(110vw); }
+  }
+
+  /* ── BUBBLES ── */
+  .bubble {
+    position: fixed;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.04);
+    pointer-events: none;
+    z-index: 3;
+    animation: float-up linear infinite;
+  }
+  @keyframes float-up {
+    0%   { transform: translateY(0) translateX(0) scale(1); opacity: 0.6; }
+    100% { transform: translateY(-100vh) translateX(var(--sway)) scale(0.5); opacity: 0; }
+  }
+
+  /* ── PETALS ── */
+  .petal {
+    position: fixed;
+    pointer-events: none;
+    z-index: 3;
+    animation: petal-fall linear infinite;
+    border-radius: 40% 60%;
+  }
+  @keyframes petal-fall {
+    0%   { transform: translateY(-20px) rotate(0deg) translateX(0); opacity: 1; }
+    100% { transform: translateY(110vh) rotate(720deg) translateX(var(--sway)); opacity: 0; }
+  }
+
+  /* scene elements */
+  #scene-elements {
+    position: fixed; inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  /* ── AUDIO INDICATOR ── */
+  #audio-indicator {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 100px;
+    padding: 8px 14px;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    transition: background 0.3s;
+  }
+  #audio-indicator:hover { background: rgba(255,255,255,0.15); }
+  #audio-indicator span {
+    font-size: 0.72rem;
+    color: rgba(255,255,255,0.6);
+    font-family: 'DM Sans', sans-serif;
+    letter-spacing: 0.05em;
+  }
+  .audio-bars {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+    height: 16px;
+  }
+  .bar {
+    width: 3px;
+    background: rgba(255,255,255,0.5);
+    border-radius: 2px;
+    animation: bar-bounce 0.8s ease-in-out infinite;
+  }
+  .bar:nth-child(1) { height: 6px;  animation-delay: 0s; }
+  .bar:nth-child(2) { height: 12px; animation-delay: 0.15s; }
+  .bar:nth-child(3) { height: 8px;  animation-delay: 0.3s; }
+  .bar:nth-child(4) { height: 14px; animation-delay: 0.1s; }
+  @keyframes bar-bounce {
+    0%,100% { transform: scaleY(0.4); }
+    50%      { transform: scaleY(1); }
+  }
+  .audio-bars.paused .bar { animation-play-state: paused; }
+
+  /* ── SCENE NAME ── */
+  #scene-name {
+    position: fixed;
+    top: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.72rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.4);
+    pointer-events: none;
+    transition: opacity 0.5s;
+    white-space: nowrap;
+  }
+
+  /* ── SUN / MOON ── */
+  #celestial {
+    position: fixed;
+    z-index: 4;
+    border-radius: 50%;
+    pointer-events: none;
+    transition: all var(--transition);
+  }
+
+  /* ── LANDSCAPE LAYERS ── */
+  #landscape {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    z-index: 4;
+    pointer-events: none;
+    transition: opacity var(--transition);
+  }
+
+  /* responsive */
+  @media (max-width: 480px) {
+    #mood-label { font-size: 3rem; }
+    .chips { gap: 6px; }
+    .chip { font-size: 0.72rem; padding: 5px 12px; }
+    #mood-input { font-size: 0.9rem; }
+  }
+
+  /* ── FLASH OVERLAY ── */
+  #flash {
+    position: fixed; inset: 0;
+    background: white;
+    z-index: 100;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+</style>
+</head>
+<body>
+
+<div id="flash"></div>
+<div id="scene"></div>
+<div id="canvas-bg"></div>
+<div id="overlay"></div>
+<div id="scene-elements"></div>
+
+<canvas id="landscape-canvas" style="position:fixed;bottom:0;left:0;width:100%;z-index:4;pointer-events:none;transition:opacity 1.8s;"></canvas>
+
+<div id="scene-name">— enter your mood —</div>
+
+<div id="ui">
+  <div id="mood-label">How do you feel?</div>
+  <div id="tagline">Type an emotion. Watch the world change.</div>
+
+  <div class="input-zone">
+    <div class="input-wrapper">
+      <input
+        id="mood-input"
+        type="text"
+        placeholder="happy, anxious, nostalgic, peaceful..."
+        autocomplete="off"
+        spellcheck="false"
+      >
+      <button id="submit-btn" onclick="handleMood()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="chips">
+      <div class="chip" onclick="quickMood('happy')">Happy</div>
+      <div class="chip" onclick="quickMood('sad')">Sad</div>
+      <div class="chip" onclick="quickMood('anxious')">Anxious</div>
+      <div class="chip" onclick="quickMood('peaceful')">Peaceful</div>
+      <div class="chip" onclick="quickMood('angry')">Angry</div>
+      <div class="chip" onclick="quickMood('romantic')">Romantic</div>
+      <div class="chip" onclick="quickMood('nostalgic')">Nostalgic</div>
+      <div class="chip" onclick="quickMood('dreamy')">Dreamy</div>
+    </div>
+  </div>
+</div>
+
+<div id="audio-indicator" onclick="toggleAudio()">
+  <div class="audio-bars paused" id="audio-bars">
+    <div class="bar"></div>
+    <div class="bar"></div>
+    <div class="bar"></div>
+    <div class="bar"></div>
+  </div>
+  <span id="audio-label">sound off</span>
+</div>
+
+<script>
+const MOODS = {
+  happy: {
+    label: "Happy",
+    bg: "#f9a825",
+    sky1: "#FF9800", sky2: "#FFCC02", sky3: "#ffe082",
+    overlay: "radial-gradient(ellipse at 50% 0%, rgba(255,220,50,0.3) 0%, transparent 70%)",
+    particles: "sun-rays",
+    landscape: "hills",
+    landscapeColor: ["#4CAF50","#388E3C","#2E7D32"],
+    celestial: { color:"#FFF176", size:80, top:"10%", glow:"rgba(255,230,0,0.3)" },
+    sceneName: "Golden Sunscape",
+    tagline: "The world is bright and warm.",
+    audio: { type:"major", baseFreq:440, tempo:0.8 },
+    elements: "petals"
+  },
+  sad: {
+    label: "Sad",
+    bg: "#1a2a4a",
+    sky1: "#1a2a4a", sky2: "#2c3e6b", sky3: "#3d5080",
+    overlay: "radial-gradient(ellipse at 50% 100%, rgba(30,60,120,0.4) 0%, transparent 60%)",
+    particles: "rain",
+    landscape: "flat",
+    landscapeColor: ["#1a2540","#152035","#0f1a2a"],
+    celestial: { color:"#90A4AE", size:50, top:"15%", glow:"rgba(100,130,160,0.15)" },
+    sceneName: "Quiet Rainfall",
+    tagline: "Let it fall. Let it pass.",
+    audio: { type:"minor", baseFreq:220, tempo:1.5 },
+    elements: "rain"
+  },
+  anxious: {
+    label: "Anxious",
+    bg: "#1a0a2e",
+    sky1: "#1a0a2e", sky2: "#2d1b4e", sky3: "#3d2060",
+    overlay: "radial-gradient(ellipse at 30% 40%, rgba(120,50,200,0.25) 0%, transparent 60%)",
+    particles: "sparks",
+    landscape: "jagged",
+    landscapeColor: ["#1a0a2e","#220f3a","#2a1245"],
+    celestial: { color:"#CE93D8", size:35, top:"20%", glow:"rgba(180,80,220,0.2)" },
+    sceneName: "Electric Night",
+    tagline: "Breathe. You are here.",
+    audio: { type:"dissonant", baseFreq:350, tempo:2.2 },
+    elements: "sparks"
+  },
+  peaceful: {
+    label: "Peaceful",
+    bg: "#0d2137",
+    sky1: "#0d2137", sky2: "#1a3a5c", sky3: "#1e4976",
+    overlay: "radial-gradient(ellipse at 50% 50%, rgba(0,150,180,0.1) 0%, transparent 60%)",
+    particles: "stars",
+    landscape: "water",
+    landscapeColor: ["#0a3060","#0d3a72","#1a4a8a"],
+    celestial: { color:"#E0F7FA", size:55, top:"12%", glow:"rgba(200,240,255,0.2)" },
+    sceneName: "Still Waters",
+    tagline: "Everything is exactly as it should be.",
+    audio: { type:"calm", baseFreq:330, tempo:0.4 },
+    elements: "bubbles"
+  },
+  angry: {
+    label: "Angry",
+    bg: "#1a0500",
+    sky1: "#1a0500", sky2: "#3d0a00", sky3: "#5c1000",
+    overlay: "radial-gradient(ellipse at 50% 100%, rgba(220,40,0,0.4) 0%, transparent 60%)",
+    particles: "embers",
+    landscape: "volcanic",
+    landscapeColor: ["#3d0a00","#5c1000","#7a1500"],
+    celestial: { color:"#FF5722", size:70, top:"8%", glow:"rgba(255,80,0,0.4)" },
+    sceneName: "Burning Core",
+    tagline: "Feel it. Don't let it consume you.",
+    audio: { type:"tense", baseFreq:180, tempo:3.0 },
+    elements: "embers"
+  },
+  romantic: {
+    label: "Romantic",
+    bg: "#1a0822",
+    sky1: "#1a0822", sky2: "#3a1040", sky3: "#5c1a55",
+    overlay: "radial-gradient(ellipse at 60% 30%, rgba(200,60,120,0.25) 0%, transparent 60%)",
+    particles: "hearts",
+    landscape: "hills",
+    landscapeColor: ["#3a0a30","#4d1040","#6b1a55"],
+    celestial: { color:"#F48FB1", size:60, top:"15%", glow:"rgba(230,100,150,0.3)" },
+    sceneName: "Rose Dusk",
+    tagline: "Your heart knows the way.",
+    audio: { type:"romantic", baseFreq:392, tempo:0.7 },
+    elements: "petals"
+  },
+  nostalgic: {
+    label: "Nostalgic",
+    bg: "#1a1000",
+    sky1: "#1a1000", sky2: "#3d2800", sky3: "#5c3d00",
+    overlay: "radial-gradient(ellipse at 40% 20%, rgba(200,140,0,0.2) 0%, transparent 60%)",
+    particles: "dust",
+    landscape: "hills",
+    landscapeColor: ["#3d2200","#5c3300","#7a4400"],
+    celestial: { color:"#FFD54F", size:65, top:"10%", glow:"rgba(230,180,0,0.25)" },
+    sceneName: "Golden Memory",
+    tagline: "Some things never really leave.",
+    audio: { type:"nostalgic", baseFreq:293, tempo:0.6 },
+    elements: "dust"
+  },
+  dreamy: {
+    label: "Dreamy",
+    bg: "#060a1a",
+    sky1: "#060a1a", sky2: "#0d1430", sky3: "#141d48",
+    overlay: "radial-gradient(ellipse at 50% 30%, rgba(100,80,200,0.2) 0%, transparent 60%)",
+    particles: "stars",
+    landscape: "dreamy",
+    landscapeColor: ["#0d0a2e","#140f3a","#1c1550"],
+    celestial: { color:"#B39DDB", size:45, top:"18%", glow:"rgba(160,120,220,0.25)" },
+    sceneName: "Infinite Dream",
+    tagline: "Where do the stars end?",
+    audio: { type:"dreamy", baseFreq:528, tempo:0.3 },
+    elements: "stars"
+  }
+};
+
+const KEYWORD_MAP = {
+  // happy variants
+  happy:["happy","joy","joyful","excited","elated","cheerful","great","wonderful","amazing","fantastic","good","love","loved","grateful","blissful","ecstatic","thrilled","delighted","content"],
+  sad:["sad","unhappy","depressed","down","blue","miserable","heartbroken","crying","tears","sorrow","grief","lonely","lost","empty","numb","hollow","devastated","hopeless"],
+  anxious:["anxious","anxiety","nervous","worried","stressed","panic","fear","scared","overwhelmed","tense","uneasy","restless","dread","apprehensive","frantic","chaos"],
+  peaceful:["peaceful","calm","serene","tranquil","relaxed","zen","quiet","still","gentle","soothing","ease","free","light","open","clear","content","safe","comfort"],
+  angry:["angry","anger","rage","furious","mad","frustrated","irritated","annoyed","bitter","resentful","hostile","boiling","fired","enraged","livid","hate"],
+  romantic:["romantic","love","crush","longing","desire","passionate","tender","intimate","heart","affectionate","devoted","adore","cherish","darling","smitten"],
+  nostalgic:["nostalgic","nostalgia","miss","missing","memory","memories","past","childhood","remember","old","vintage","bygone","longing","reminisce","yesterday","home"],
+  dreamy:["dreamy","dream","daydream","wonder","curious","mystical","magical","floating","fantasy","ethereal","otherworldly","surreal","cosmic","infinite","vague","hazy","drifting"]
+};
+
+let currentMood = null;
+let audioCtx = null;
+let audioNodes = [];
+let audioEnabled = false;
+let elementInterval = null;
+const canvas = document.getElementById('landscape-canvas');
+const ctx2 = canvas.getContext('2d');
+
+function detectMood(text) {
+  const lower = text.toLowerCase();
+  for (const [mood, keywords] of Object.entries(KEYWORD_MAP)) {
+    for (const kw of keywords) {
+      if (lower.includes(kw)) return mood;
+    }
+  }
+  // direct match
+  if (MOODS[lower]) return lower;
+  return null;
+}
+
+function quickMood(m) {
+  document.getElementById('mood-input').value = m;
+  handleMood();
+}
+
+function handleMood() {
+  const val = document.getElementById('mood-input').value.trim();
+  if (!val) return;
+  const detected = detectMood(val) || 'dreamy';
+  applyMood(detected);
+}
+
+document.getElementById('mood-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') handleMood();
+});
+
+function flash(cb) {
+  const f = document.getElementById('flash');
+  f.style.opacity = '1';
+  setTimeout(() => {
+    f.style.opacity = '0';
+    if (cb) setTimeout(cb, 150);
+  }, 100);
+}
+
+function applyMood(moodKey) {
+  if (currentMood === moodKey) return;
+  currentMood = moodKey;
+  const m = MOODS[moodKey];
+
+  flash(() => {
+    // scene bg
+    document.getElementById('scene').style.background = `linear-gradient(180deg, ${m.sky1} 0%, ${m.sky2} 50%, ${m.sky3} 100%)`;
+    document.getElementById('overlay').style.background = m.overlay;
+    document.getElementById('overlay').style.opacity = '1';
+
+    // label
+    const label = document.getElementById('mood-label');
+    label.textContent = m.label;
+    label.classList.add('active');
+
+    // tagline
+    document.getElementById('tagline').textContent = m.tagline;
+
+    // scene name
+    document.getElementById('scene-name').textContent = m.sceneName;
+
+    // celestial body
+    updateCelestial(m.celestial);
+
+    // landscape
+    drawLandscape(m.landscape, m.landscapeColor);
+
+    // particles
+    clearElements();
+    spawnElements(m.elements, m);
+
+    // audio
+    if (audioEnabled) playAudio(m.audio);
+  });
+}
+
+function updateCelestial(c) {
+  let el = document.getElementById('celestial');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'celestial';
+    document.body.appendChild(el);
+  }
+  el.style.cssText = `
+    position:fixed;
+    z-index:4;
+    border-radius:50%;
+    pointer-events:none;
+    width:${c.size}px; height:${c.size}px;
+    background:${c.color};
+    top:${c.top};
+    right:15%;
+    box-shadow: 0 0 ${c.size*0.8}px ${c.size*0.4}px ${c.glow}, 0 0 ${c.size*0.3}px ${c.size*0.1}px ${c.color};
+    transition: all 1.8s cubic-bezier(0.4,0,0.2,1);
+  `;
+}
+
+// ── LANDSCAPE ──
+function drawLandscape(type, colors) {
+  canvas.width = window.innerWidth;
+  canvas.height = Math.min(window.innerHeight * 0.4, 300);
+  canvas.style.height = canvas.height + 'px';
+  ctx2.clearRect(0, 0, canvas.width, canvas.height);
+
+  const w = canvas.width, h = canvas.height;
+
+  if (type === 'hills') {
+    [2, 1, 0].forEach(i => {
+      ctx2.beginPath();
+      ctx2.moveTo(0, h);
+      const offset = i * (w / 6);
+      ctx2.quadraticCurveTo(w*0.15+offset, h*(0.3+i*0.15), w*0.35+offset, h*(0.55+i*0.1));
+      ctx2.quadraticCurveTo(w*0.55+offset, h*(0.8+i*0.05), w*0.65+offset, h*(0.5+i*0.1));
+      ctx2.quadraticCurveTo(w*0.8+offset, h*(0.2+i*0.15), w+offset, h*(0.45+i*0.1));
+      ctx2.lineTo(w, h);
+      ctx2.closePath();
+      ctx2.fillStyle = colors[i];
+      ctx2.fill();
+    });
+  } else if (type === 'water') {
+    for (let i = 0; i < 3; i++) {
+      ctx2.beginPath();
+      ctx2.moveTo(0, h*(0.5+i*0.15));
+      for (let x = 0; x <= w; x += 40) {
+        const y = h*(0.5+i*0.15) + Math.sin(x/80 + i) * 10;
+        ctx2.lineTo(x, y);
+      }
+      ctx2.lineTo(w, h); ctx2.lineTo(0, h);
+      ctx2.closePath();
+      ctx2.fillStyle = colors[i];
+      ctx2.fill();
+    }
+  } else if (type === 'jagged') {
+    [2,1,0].forEach(i => {
+      ctx2.beginPath();
+      ctx2.moveTo(0, h);
+      const pts = 12;
+      for (let j = 0; j <= pts; j++) {
+        const x = (j/pts)*w;
+        const y = h*(0.3+i*0.12) + (j%2===0 ? -h*0.18 : h*0.05) + Math.random()*20;
+        ctx2.lineTo(x, y);
+      }
+      ctx2.lineTo(w, h);
+      ctx2.closePath();
+      ctx2.fillStyle = colors[i];
+      ctx2.fill();
+    });
+  } else if (type === 'volcanic') {
+    [2,1,0].forEach(i => {
+      ctx2.beginPath();
+      ctx2.moveTo(0, h);
+      const mx = w/2 + (i-1)*80;
+      ctx2.lineTo(mx - w*0.18, h);
+      ctx2.lineTo(mx, h*(0.05+i*0.1));
+      ctx2.lineTo(mx + w*0.18, h);
+      ctx2.lineTo(w, h);
+      ctx2.closePath();
+      ctx2.fillStyle = colors[i];
+      ctx2.fill();
+    });
+    // lava glow at top
+    ctx2.beginPath();
+    const grd = ctx2.createRadialGradient(w/2, h*0.1, 0, w/2, h*0.1, 80);
+    grd.addColorStop(0, 'rgba(255,80,0,0.6)');
+    grd.addColorStop(1, 'transparent');
+    ctx2.fillStyle = grd;
+    ctx2.arc(w/2, h*0.1, 80, 0, Math.PI*2);
+    ctx2.fill();
+  } else if (type === 'dreamy') {
+    for (let i = 0; i < 3; i++) {
+      ctx2.beginPath();
+      ctx2.moveTo(0, h);
+      for (let x = 0; x <= w; x += 20) {
+        const y = h*(0.4+i*0.15) + Math.sin(x/120+i*1.5)*25 + Math.cos(x/60)*10;
+        ctx2.lineTo(x, y);
+      }
+      ctx2.lineTo(w, h);
+      ctx2.closePath();
+      ctx2.fillStyle = colors[i];
+      ctx2.fill();
+    }
+  } else {
+    // flat
+    ctx2.fillStyle = colors[0];
+    ctx2.fillRect(0, h*0.6, w, h*0.4);
+    ctx2.fillStyle = colors[1];
+    ctx2.fillRect(0, h*0.75, w, h*0.25);
+  }
+}
+
+// ── ELEMENTS ──
+function clearElements() {
+  clearInterval(elementInterval);
+  document.getElementById('scene-elements').innerHTML = '';
+}
+
+function spawnElements(type, m) {
+  const container = document.getElementById('scene-elements');
+  const count = type === 'stars' ? 60 : type === 'rain' ? 80 : 40;
+
+  for (let i = 0; i < count; i++) {
+    setTimeout(() => createEl(type, container, m), i * 30);
+  }
+
+  elementInterval = setInterval(() => {
+    createEl(type, container, m);
+  }, type === 'rain' ? 60 : type === 'stars' ? 1000 : 400);
+}
+
+function createEl(type, container, m) {
+  const el = document.createElement('div');
+
+  if (type === 'rain') {
+    el.className = 'rain-drop';
+    el.style.cssText = `left:${Math.random()*100}vw;height:${10+Math.random()*20}px;opacity:${0.2+Math.random()*0.6};animation-duration:${0.4+Math.random()*0.4}s;animation-delay:${-Math.random()*2}s`;
+  } else if (type === 'stars') {
+    el.className = 'star';
+    const s = 1 + Math.random()*2.5;
+    el.style.cssText = `left:${Math.random()*100}vw;top:${Math.random()*70}vh;width:${s}px;height:${s}px;animation-duration:${1.5+Math.random()*3}s;animation-delay:${-Math.random()*4}s;opacity:${0.3+Math.random()*0.7}`;
+  } else if (type === 'embers') {
+    el.className = 'ember';
+    const s = 2+Math.random()*5;
+    const hue = 10+Math.random()*30;
+    el.style.cssText = `left:${20+Math.random()*60}vw;bottom:0;width:${s}px;height:${s}px;background:hsl(${hue},100%,${50+Math.random()*30}%);--drift:${(-30+Math.random()*60)}px;animation-duration:${1.5+Math.random()*2}s;animation-delay:${-Math.random()*3}s`;
+  } else if (type === 'petals') {
+    el.className = 'petal';
+    const s = 6+Math.random()*10;
+    const hue = m.label==='Romantic'?320+Math.random()*30 : 80+Math.random()*40;
+    el.style.cssText = `left:${Math.random()*100}vw;top:-10px;width:${s}px;height:${s*0.6}px;background:hsla(${hue},70%,70%,0.8);--sway:${-40+Math.random()*80}px;animation-duration:${3+Math.random()*4}s;animation-delay:${-Math.random()*6}s`;
+  } else if (type === 'bubbles') {
+    el.className = 'bubble';
+    const s = 8+Math.random()*25;
+    el.style.cssText = `left:${Math.random()*100}vw;bottom:0;width:${s}px;height:${s}px;--sway:${-20+Math.random()*40}px;animation-duration:${4+Math.random()*6}s;animation-delay:${-Math.random()*8}s`;
+  } else if (type === 'dust') {
+    el.className = 'particle';
+    const s = 2+Math.random()*4;
+    el.style.cssText = `left:${Math.random()*100}vw;top:${Math.random()*100}vh;width:${s}px;height:${s}px;background:rgba(255,200,80,${0.1+Math.random()*0.3});animation:float-up ${6+Math.random()*8}s linear infinite;animation-delay:${-Math.random()*10}s;--sway:${-30+Math.random()*60}px`;
+  } else if (type === 'sparks') {
+    el.className = 'particle';
+    const s = 1+Math.random()*3;
+    el.style.cssText = `left:${Math.random()*100}vw;top:${Math.random()*100}vh;width:${s}px;height:${s}px;background:rgba(${180+Math.random()*75},${Math.random()*80},255,0.7);animation:twinkle ${0.2+Math.random()*0.5}s ease-in-out infinite;animation-delay:${-Math.random()*1}s`;
+  }
+
+  container.appendChild(el);
+  // cleanup old ones
+  if (container.children.length > 200) container.removeChild(container.children[0]);
+}
+
+// ── AUDIO ENGINE ──
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function stopAudio() {
+  audioNodes.forEach(n => { try { n.stop(); } catch(e){} });
+  audioNodes = [];
+}
+
+function playAudio(config) {
+  initAudio();
+  stopAudio();
+
+  const { type, baseFreq, tempo } = config;
+  const now = audioCtx.currentTime;
+
+  if (type === 'major' || type === 'romantic') {
+    // gentle major chord + melody
+    const scale = [1, 1.25, 1.5, 2, 2.5];
+    scale.forEach((ratio, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.frequency.value = baseFreq * ratio;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.04, now + 0.5 + i*0.3);
+      osc.start(now); audioNodes.push(osc);
+    });
+    // subtle melody loop
+    const mOsc = audioCtx.createOscillator();
+    const mGain = audioCtx.createGain();
+    mOsc.connect(mGain); mGain.connect(audioCtx.destination);
+    mOsc.type = 'triangle'; mOsc.frequency.value = baseFreq * 2;
+    mGain.gain.setValueAtTime(0.06, now);
+    const melNotes = [1,1.25,1.5,1.25,1,0.75,1,1.25];
+    melNotes.forEach((r, i) => {
+      mOsc.frequency.setValueAtTime(baseFreq*2*r, now+i*tempo);
+    });
+    mOsc.start(now); audioNodes.push(mOsc);
+  } else if (type === 'minor' || type === 'nostalgic') {
+    const scale = [1, 1.2, 1.5, 1.8];
+    scale.forEach((ratio, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.frequency.value = baseFreq * ratio;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.03, now + 1 + i*0.5);
+      osc.start(now); audioNodes.push(osc);
+    });
+  } else if (type === 'calm' || type === 'dreamy') {
+    const freqs = [baseFreq, baseFreq*1.5, baseFreq*2, baseFreq*3];
+    freqs.forEach((f, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.frequency.value = f;
+      osc.type = i === 0 ? 'sine' : 'triangle';
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.025, now + 2 + i*0.8);
+      osc.start(now); audioNodes.push(osc);
+    });
+  } else if (type === 'tense' || type === 'dissonant') {
+    const freqs = [baseFreq, baseFreq*1.41, baseFreq*1.78];
+    freqs.forEach((f, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.frequency.value = f;
+      osc.type = i===0 ? 'sawtooth' : 'square';
+      gain.gain.setValueAtTime(0.02, now);
+      gain.gain.setValueAtTime(0.04, now+0.1);
+      gain.gain.setValueAtTime(0.01, now+0.2+i*0.1);
+      osc.start(now); audioNodes.push(osc);
+    });
+  }
+}
+
+function toggleAudio() {
+  audioEnabled = !audioEnabled;
+  const bars = document.getElementById('audio-bars');
+  const label = document.getElementById('audio-label');
+  if (audioEnabled) {
+    bars.classList.remove('paused');
+    label.textContent = 'sound on';
+    if (currentMood) playAudio(MOODS[currentMood].audio);
+    else initAudio();
+  } else {
+    bars.classList.add('paused');
+    label.textContent = 'sound off';
+    stopAudio();
+  }
+}
+
+// resize
+window.addEventListener('resize', () => {
+  if (currentMood) drawLandscape(MOODS[currentMood].landscape, MOODS[currentMood].landscapeColor);
+});
+
+// initial state draw
+drawLandscape('flat', ['#0a0a14','#0f0f1a','#141420']);
+</script>
+</body>
+</html>
